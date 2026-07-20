@@ -1,0 +1,190 @@
+# ============================================================================
+#  Project metadata
+# ============================================================================
+[project]
+name = "netvitals"
+version = "0.0.2"
+description = "Internet connection monitor for macOS"
+readme = "README.md"
+authors = [{ name = "pybass" }]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.14"
+# No "License ::" classifier: PyPI rejects it together with the PEP 639 `license` expression above.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = [
+    "aiohttp~=3.14.3",
+    "cyclopts~=4.22.2",
+    "dnspython~=2.8",
+    "psutil~=7.2",
+    "pyobjc-core~=12.1 ; sys_platform == 'darwin'",
+    "pyobjc-framework-cocoa~=12.1 ; sys_platform == 'darwin'",
+    "rich~=15.0",
+    "textual~=8.2",
+]
+
+[project.urls]
+Repository = "https://github.com/pybass/netvitals"
+Issues = "https://github.com/pybass/netvitals/issues"
+
+[project.scripts]
+netvitals = "netvitals.cli.main:main"
+
+
+# ============================================================================
+#  Build system
+# ============================================================================
+# uv_build is pinned to a compatible range: the backend is an isolated build dependency that
+# uv.lock does not cover, so an open-ended requirement would let the same tag build differently
+# over time.
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+
+# ============================================================================
+#  Development dependencies — grouped by role (mirrors the tool sections below)
+# ============================================================================
+[dependency-groups]
+dev = [
+    # Linting & formatting
+    "ruff~=0.16.0",
+    # Type checking
+    "mypy~=2.3.0",
+    # Testing & coverage
+    "pytest~=9.1.1",
+    "pytest-asyncio~=1.4.0",
+    "pytest-cov~=7.1.0",
+    "pytest-xdist~=3.8.0",
+    # Security & vulnerability audit
+    "pip-audit~=2.10.1",
+    # Dependency hygiene — imports vs declared deps
+    "deptry~=0.25.1",
+    # Git pre-commit hooks
+    "pre-commit~=4.6.1",
+    "types-psutil~=7.2",
+]
+
+
+# ============================================================================
+#  Ruff — linting & formatting
+# ============================================================================
+[tool.ruff]
+line-length = 130
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # --- Ecosystem / tool conflicts ---
+    "COM812",   # trailing-comma — handled by ruff formatter, must be off here
+    "ISC001",   # single-line-implicit-string-concat — conflicts with ruff formatter
+    "D203",     # one-blank-line-before-class — conflicts with D211
+    "D213",     # multi-line-summary-second-line — conflicts with D212
+
+    # --- Stylistic preferences ---
+    "A005",     # stdlib-module-shadowing — allowed when intentional
+    "PLC0414",  # useless-import-alias — `import x as x` is our explicit re-export marker
+    "RET503",   # implicit-return — explicit None returns are noisy
+    "G004",     # f-strings in logging — accepted
+
+    # --- flake8-pytest-style: opinionated rules only (bug-catchers stay on) ---
+    "PT001",    # fixture-incorrect-parentheses-style — cosmetic
+    "PT006",    # parametrize-names-wrong-type — cosmetic
+    "PT007",    # parametrize-values-wrong-type — cosmetic
+    "PT023",    # mark-incorrect-parentheses-style — cosmetic
+
+    # --- Categories that fight our coding style ---
+    "FIX",      # flake8-fixme — TODOs are fine; tracked elsewhere
+    "FBT",      # boolean-trap — too restrictive
+    "EM",       # error-message strings — inline messages accepted
+    "CPY",      # flake8-copyright — the MIT license lives in LICENSE and package metadata; per-file headers add nothing
+    "TC",       # flake8-type-checking — TYPE_CHECKING blocks save import time we don't care about; cost: import noise + broken runtime annotations
+    "TRY003",   # raise-vanilla-args — too noisy
+    "C901",     # complex-structure — judgment call
+
+    # --- Soft pylint thresholds ---
+    "PLR0911",  # too-many-return-statements
+    "PLR0912",  # too-many-branches
+    "PLR0913",  # too-many-arguments
+    "PLR2004",  # magic-value-comparison
+
+    # --- TODO metadata (optional) ---
+    "TD002",    # missing-todo-author
+    "TD003",    # missing-todo-link
+
+    # --- Async edge case ---
+    "ASYNC109", # async-function-with-timeout — debatable, off
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN", "S"]  # tests skip type-annotation (ANN) and assert/security (S) rules
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true  # keep code examples in docstrings formatted like real code
+
+
+# ============================================================================
+#  Type checking — mypy (strict)
+# ============================================================================
+[tool.mypy]
+python_version = "3.14"
+strict = true
+
+# Relax strictness on tests so pytest fixtures and untyped helpers don't fight you.
+# pyobjc ships no py.typed marker or stubs; this silences the missing-stub errors for its modules.
+# Third-party modules only — suppressions on our own code do not belong here.
+[[tool.mypy.overrides]]
+module = ["AppKit", "Foundation", "PyObjCTools", "PyObjCTools.*", "objc"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+disallow_untyped_calls = false
+warn_unused_ignores = false
+
+
+# ============================================================================
+#  Spell checking — codespell
+# ============================================================================
+[tool.codespell]
+skip = "uv.lock,.git,.venv,.mypy_cache,.ruff_cache,.pytest_cache,htmlcov"
+
+
+# ============================================================================
+#  Testing & coverage — pytest + coverage
+# ============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
+xfail_strict = true
+# `auto` lets async tests be plain `async def` functions.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# Any warning raised in tests is a failure — deprecations surface at the commit that introduces
+# them, not at the upgrade that removes the API. Add targeted ignores below "error" when an
+# unfixable third-party warning appears, e.g.:
+#   "ignore:<message prefix>:DeprecationWarning:somepackage.*",
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
