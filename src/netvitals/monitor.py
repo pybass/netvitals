@@ -51,9 +51,6 @@ nothing; a loud death that a supervisor can restart is the honest outcome.
 _STOP_TIMEOUT = 10.0
 """Seconds to wait for a graceful exit — a probe can be mid-request for its full timeout first."""
 
-_LOCK_FILENAME = "monitor.lock"
-"""Lock file name under the data dir; every control function must agree on it."""
-
 
 @dataclass(frozen=True, slots=True)
 class MonitorStatus:
@@ -198,15 +195,13 @@ class Monitor:
 async def run_monitor(core: Core) -> None:
     """Run the monitor in this process until a signal stops it.
 
-    Raises AppError when another monitor already holds the lock. The log is mirrored
-    to stderr: a foreground run belongs on the terminal too, and a background run has
-    its stderr on /dev/null anyway.
+    Raises AppError when another monitor already holds the lock. The log is mirrored to the
+    terminal when there is one: a foreground run belongs there too.
     """
-    lock_path = core.data_dir / _LOCK_FILENAME
-    lock_fd = process.acquire_lock(lock_path)
+    lock_fd = process.acquire_lock(core.monitor_lock)
     if lock_fd is None:
-        raise AppError(f"monitor: already running (pid {process.lock_holder(lock_path)})")
-    core.log_to_stderr()
+        raise AppError(f"monitor: already running (pid {process.lock_holder(core.monitor_lock)})")
+    core.log_to_terminal()
     try:
         await Monitor(core).run()
     finally:
@@ -219,7 +214,7 @@ def start_monitor(core: Core) -> int:
     Raises AppError when a monitor is already running, or when the spawned one dies before taking
     the lock (its story is in the log file).
     """
-    return process.start_detached(core, ["monitor", "run"], core.data_dir / _LOCK_FILENAME, what="monitor")
+    return process.start_detached(core, ["monitor", "run"], core.monitor_lock, what="monitor")
 
 
 def stop_monitor(core: Core) -> int | None:
@@ -228,14 +223,14 @@ def stop_monitor(core: Core) -> int | None:
     Raises AppError when it still holds the lock after the grace period — deliberately without
     SIGKILL: a monitor that ignores SIGTERM for that long is a bug worth seeing.
     """
-    return process.stop_detached(core.data_dir / _LOCK_FILENAME, what="monitor", timeout=_STOP_TIMEOUT)
+    return process.stop_detached(core.monitor_lock, what="monitor", timeout=_STOP_TIMEOUT)
 
 
 def monitor_status(core: Core) -> MonitorStatus:
     """Return the combined liveness view: the lock answers "running now", the heartbeat "last alive"."""
     state = core.monitor_state()
     return MonitorStatus(
-        pid=process.lock_holder(core.data_dir / _LOCK_FILENAME),
+        pid=process.lock_holder(core.monitor_lock),
         started_at=state.started_at if state is not None else None,
         heartbeat_at=state.updated_at if state is not None else None,
     )

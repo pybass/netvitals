@@ -12,7 +12,7 @@ does, and `monitor run` runs in the foreground. See `src/netvitals/monitor.py`.
 | command | what it does |
 |---|---|
 | `netvitals monitor run` | run in the foreground; logs to the terminal as well as the log file. Ctrl-C stops it. This is what a supervisor should run. |
-| `netvitals monitor start` | spawn a background monitor (`python -m netvitals … monitor run`) detached from the terminal, with its output to `/dev/null`. Waits until the new monitor holds the lock, so a start that silently dies is reported as an error, not as success. |
+| `netvitals monitor start` | spawn a background monitor (`python -m netvitals … monitor run`) detached from the terminal, with its output to `<data-dir>/crash.log`. Waits until the new monitor holds the lock, so a start that silently dies is reported as an error, not as success. |
 | `netvitals monitor stop` | SIGTERM the running monitor and wait for it to exit. |
 | `netvitals monitor status` | whether a monitor is running, and how old its last heartbeat is. |
 

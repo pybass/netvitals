@@ -20,7 +20,6 @@ def setup_logging(log_path: Path, *, debug: bool = False) -> None:
     logger = logging.getLogger(LOGGER_NAME)
     if logger.handlers:
         return
-    log_path.parent.mkdir(parents=True, exist_ok=True)
     # Rotate at ~1 MB, keep 3: a day of `--debug` probe output is a few megabytes.
     handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=3)
     handler.setFormatter(_FORMATTER)

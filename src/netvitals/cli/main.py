@@ -1,7 +1,7 @@
 """CLI client: run and control netvitals from the shell."""
 
-import os
 import sys
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -42,9 +42,7 @@ def launcher(
     if "core" not in ignored:  # --help and --version run without a Core
         command(*bound.args, **bound.kwargs)
         return
-    if data_dir is None:  # default: the XDG data dir (deliberate cross-tool convention; usually ~/.local/share)
-        data_dir = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "netvitals"
-    core = Core(data_dir, debug=debug)
+    core = Core(data_dir if data_dir is not None else Core.DEFAULT_DATA_DIR, debug=debug)
     try:
         command(*bound.args, **bound.kwargs, core=core)
     finally:
@@ -52,7 +50,7 @@ def launcher(
 
 
 def main() -> None:
-    """Console-script entry point: map AppError to a clean one-line exit."""
+    """Console-script entry point: map AppError to a clean one-line exit, stamp anything else as a crash."""
     # Nothing here is portable: the probes shell out to scutil/route, the tray is AppKit.
     if sys.platform != "darwin":
         sys.exit("error: netvitals runs on macOS only")
@@ -60,3 +58,10 @@ def main() -> None:
         app.meta()
     except AppError as e:
         sys.exit(f"error: {e}")
+    except Exception:
+        # This entry point is also the detached clients', and their stderr is the crash log: without
+        # a timestamp a traceback in there cannot be dated, and one that crashed before logging was
+        # wired has nowhere else to land at all. On a terminal it is one extra line above the same
+        # traceback the user would have seen anyway.
+        sys.stderr.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] netvitals crashed:\n")
+        raise

@@ -53,7 +53,28 @@ it. The API, grouped:
 | History | `warm/cold/dns/vpn/ip_history(limit)` | the newest recorded rows, oldest first; the newest element doubles as the current state |
 | Monitor data | `record_heartbeat(started_at, now)`, `monitor_state()` | Core stores and serves the heartbeat row without knowing what process writes it |
 | Maintenance | `purge(now)` | delete rows past retention |
-| Infra | `data_dir`, `debug`, `log_to_stderr()`, `close()` | logging is configured in `Core.__init__` |
+| Infra | `data_dir`, `DEFAULT_DATA_DIR`, `crash_log`, `monitor_lock`, `tray_lock`, `debug`, `log_to_terminal()`, `close()` | the directory is created, and logging configured, in `Core.__init__` |
+
+Core owns the data directory: it creates it, it names everything in it, and it owns where the
+directory sits without `--data-dir` (`DEFAULT_DATA_DIR`, a fixed `~/.local/share/netvitals` — see
+[non-goals](non-goals.md)). A spawned client is given `--data-dir` only when it differs from that
+default: the common case stays readable in `ps`, and the child resolves the same fixed default
+itself.
+
+Naming the two lock files is not a dependency on the clients that hold them — the same distinction
+`record_heartbeat`/`monitor_state` already draw: Core owns the file, and what the holder does with
+it is none of its business.
+
+## The crash log
+
+A detached client has no terminal, so `process.start_detached` points its stdout and stderr at
+`<data-dir>/crash.log` (opened `"ab"`, so concurrent writers are safe). Everything it has to say
+routinely goes through the logger into `netvitals.log`; what lands in the crash log is only what
+never reached the logger — a traceback from before logging was wired, or from outside it — stamped
+with a `netvitals crashed:` header by `cli.main`. The file stays empty in normal operation, so it
+needs no rotation. That is also why `log_to_terminal()` mirrors the log to stderr only when stderr
+is a terminal: in a detached client stderr *is* the crash log, and a stream of INFO lines would
+bury the tracebacks it exists to catch.
 
 Domain state lives in Core, scheduling state does not: the pinned warm-probe session
 (dropped by `reset_warm`) and the public-IP/country cache (keyed by the address itself,

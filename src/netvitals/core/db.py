@@ -71,8 +71,7 @@ class Db:
     """Database access for measurement data. The monitor writes; every other client reads."""
 
     def __init__(self, path: Path) -> None:
-        """Open the database (creating the directory), apply pragmas, and run pending migrations."""
-        path.parent.mkdir(parents=True, exist_ok=True)
+        """Open the database, apply pragmas, and run pending migrations; the directory must exist (Core makes it)."""
         # Owned by the creating thread; the monitor is single-threaded. autocommit=True gives every
         # statement its own transaction, so a write can never be left hanging in an implicit one;
         # the few multi-statement writes take an explicit BEGIN/COMMIT instead.

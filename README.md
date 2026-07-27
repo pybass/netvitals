@@ -30,6 +30,7 @@ The monitor does not come back after a reboot yet — start it again.
 - [monitor](https://github.com/pybass/netvitals/blob/main/docs/monitor.md) — cadence, scheduling, failure policy.
 - [tray](https://github.com/pybass/netvitals/blob/main/docs/tray.md) — what each glyph means and why.
 - [storage](https://github.com/pybass/netvitals/blob/main/docs/storage.md) — schema, deduplication, retention.
+- [non-goals](https://github.com/pybass/netvitals/blob/main/docs/non-goals.md) — what netvitals deliberately will not do.
 
 ## License
 

@@ -19,9 +19,6 @@ _POLL_SEC = 2.0
 Polling faster would only re-read the same row.
 """
 
-_LOCK_FILENAME = "tray.lock"
-"""Lock file name under the data dir: one icon per data dir, and the SIGTERM target for `tray stop`."""
-
 _STOP_TIMEOUT = 5.0
 """Seconds to wait for the icon to go away — it has nothing in flight, so this is already generous."""
 
@@ -192,15 +189,13 @@ class TrayController:
 def run_tray(core: Core) -> None:
     """Show the icon in this process until it quits or is stopped.
 
-    Raises AppError when another icon already holds the lock. The log is mirrored to stderr for the
-    same reason as the monitor's: a foreground run belongs on the terminal, and a background run has
-    its stderr on /dev/null anyway.
+    Raises AppError when another icon already holds the lock — one icon per data dir. The log is
+    mirrored to the terminal for the same reason as the monitor's: a foreground run belongs there too.
     """
-    lock_path = core.data_dir / _LOCK_FILENAME
-    lock_fd = process.acquire_lock(lock_path)
+    lock_fd = process.acquire_lock(core.tray_lock)
     if lock_fd is None:
-        raise AppError(f"tray: already running (pid {process.lock_holder(lock_path)})")
-    core.log_to_stderr()
+        raise AppError(f"tray: already running (pid {process.lock_holder(core.tray_lock)})")
+    core.log_to_terminal()
     try:
         TrayController(core).run()
     finally:
@@ -213,7 +208,7 @@ def start_tray(core: Core) -> int:
     Raises AppError when one is already showing, or when the spawned one dies before taking the
     lock (its story is in the log file).
     """
-    return process.start_detached(core, ["tray", "run"], core.data_dir / _LOCK_FILENAME, what="tray")
+    return process.start_detached(core, ["tray", "run"], core.tray_lock, what="tray")
 
 
 def stop_tray(core: Core) -> int | None:
@@ -221,4 +216,4 @@ def stop_tray(core: Core) -> int | None:
 
     Raises AppError when it still holds the lock after the grace period.
     """
-    return process.stop_detached(core.data_dir / _LOCK_FILENAME, what="tray", timeout=_STOP_TIMEOUT)
+    return process.stop_detached(core.tray_lock, what="tray", timeout=_STOP_TIMEOUT)

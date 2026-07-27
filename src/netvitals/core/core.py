@@ -2,7 +2,8 @@
 
 import asyncio
 import os
-from typing import TYPE_CHECKING
+import sys
+from pathlib import Path
 
 from netvitals.core import logs
 from netvitals.core.db import Db
@@ -11,9 +12,6 @@ from netvitals.core.probes.dns import measure_dns
 from netvitals.core.probes.ip import detect_public_ip, resolve_country
 from netvitals.core.probes.latency import WarmLatencyProbe, measure_cold_latency
 from netvitals.core.probes.vpn import detect_vpn
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class Core:
@@ -24,10 +22,30 @@ class Core:
     appears here as a method; what only Core needs stays private.
     """
 
+    DEFAULT_DATA_DIR = Path.home() / ".local" / "share" / "netvitals"
+    """Where the data lives without `--data-dir`.
+
+    A class attribute because every entry point needs it before a Core exists, and a spawned client
+    resolves it again for itself. A fixed path, deliberately not `$XDG_DATA_HOME`
+    (docs/non-goals.md): a variable exported for some other tool must not move our database.
+    """
+
     def __init__(self, data_dir: Path, *, debug: bool = False) -> None:
-        """Set up logging and open the database."""
+        """Create the data directory, set up logging, and open the database."""
+        # Core owns the directory, so Core creates it: otherwise every writer below has to, and
+        # which of them happens to run first becomes load-bearing.
+        data_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir = data_dir  # Where the database, config, and log files live
         self.debug = debug  # DEBUG-level logging; public so a client spawning another process can forward it
+        # Where a detached client's stdout/stderr go. It holds only what escaped the logger — a
+        # traceback from before logging was wired, or from outside it — so it stays empty in normal
+        # operation and needs no rotation. Every writer opens it "ab": O_APPEND keeps them safe.
+        self.crash_log = data_dir / "crash.log"
+        # The single-instance locks, one per background client: each is flock'ed by its holder for
+        # that process's whole life, and the pid inside is the SIGTERM target for a stop. Core names
+        # them because it owns what lives in the data directory; what the holders do is not its business.
+        self.monitor_lock = data_dir / "monitor.lock"
+        self.tray_lock = data_dir / "tray.lock"
         self._warm_probe = WarmLatencyProbe()  # Pinned warm session for sampling; allocates nothing until first measure
         self._ip: str | None = None  # Last known public IP, to skip a redundant country lookup
         self._country: str | None = None  # Country of `_ip`
@@ -140,9 +158,14 @@ class Core:
 
     # -- Infra ------------------------------------------------------------------
 
-    def log_to_stderr(self) -> None:
-        """Mirror the log to stderr as well — for a client running on a terminal."""
-        logs.log_to_stderr()
+    def log_to_terminal(self) -> None:
+        """Mirror the log to stderr as well; a no-op when stderr is not a terminal.
+
+        A detached client's stderr is the crash log: mirroring every INFO line into it would bury
+        the tracebacks it exists to catch, in a file that is deliberately never rotated.
+        """
+        if sys.stderr.isatty():
+            logs.log_to_stderr()
 
     def close(self) -> None:
         """Close the database."""

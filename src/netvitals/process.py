@@ -76,18 +76,25 @@ def start_detached(core: Core, args: Sequence[str], lock_path: Path, *, what: st
         raise AppError(f"{what}: already running (pid {running})")
     # `-m netvitals` rather than the console script: this interpreter certainly has us installed,
     # while whether the child's PATH would find the script is unknowable.
-    argv = [sys.executable, "-m", "netvitals", "--data-dir", str(core.data_dir)]
+    argv = [sys.executable, "-m", "netvitals"]
+    # The default is passed by omission, so the common case stays readable in `ps`; the child
+    # resolves the same fixed default itself.
+    if core.data_dir != Core.DEFAULT_DATA_DIR:
+        argv += ["--data-dir", str(core.data_dir)]
     if core.debug:
         argv.append("--debug")
     argv += args
     # A new session detaches the child from the terminal's process group, so it survives the shell
     # that started it; the launching CLI exits immediately after, and the child is reparented to the
-    # init process. Its standard streams go to /dev/null — it must not write to a terminal it no
-    # longer owns, and everything it has to say goes to the log file.
+    # init process. It must not write to a terminal it no longer owns, so stdin is /dev/null and its
+    # output goes to the crash log: everything it has to say routinely goes to the log file, and
+    # what lands here is what never reached the logger — including a crash before it was wired.
     # S603: argv is ours — this interpreter, our module name, the resolved data dir. Nothing
     # external can reach it, and shell=False is exactly the behavior we want.
-    devnull = subprocess.DEVNULL
-    subprocess.Popen(argv, start_new_session=True, stdin=devnull, stdout=devnull, stderr=devnull)  # noqa: S603
+    with core.crash_log.open("ab") as crash_log:
+        subprocess.Popen(  # noqa: S603
+            argv, start_new_session=True, stdin=subprocess.DEVNULL, stdout=crash_log, stderr=crash_log
+        )
     deadline = time.monotonic() + _START_TIMEOUT
     while time.monotonic() < deadline:
         if (pid := lock_holder(lock_path)) is not None:
