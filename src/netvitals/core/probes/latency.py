@@ -19,7 +19,10 @@ LATENCY_ENDPOINTS: tuple[str, ...] = (
 """Captive-portal detection endpoints: purpose-built for connectivity checks, tiny payloads, global CDNs."""
 
 TIMEOUT = 5.0
-"""Total HTTP timeout per request in seconds."""
+"""Total HTTP timeout per request in seconds — long enough for a genuinely slow but alive connection."""
+
+WARM_MEASURE_MAX = 2 * TIMEOUT
+"""Worst-case seconds one warm measurement can take: the pinned request times out, then the failover race does."""
 
 
 async def _timed_get(session: aiohttp.ClientSession, url: str) -> tuple[float, str] | None:

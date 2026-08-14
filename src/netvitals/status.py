@@ -25,10 +25,12 @@ WARM_SLOW_MS = 800  # Warm latency below this is slow; at or above is bad
 COLD_OK_MS = 600  # Cold latency below this is healthy
 COLD_SLOW_MS = 1500  # Cold latency below this is slow; at or above is bad
 
-_STALE_AFTER = 5 * monitor.WARM_INTERVAL
+_STALE_AFTER = 5 * monitor.WARM_INTERVAL + Core.WARM_MEASURE_MAX
 """Seconds without a warm sample before the stored state stops counting as current.
 
-Five cycles: a single missed cycle is ordinary jitter, five in a row means nothing is arriving.
+Five cycles — a single missed cycle is ordinary jitter, five in a row means nothing is arriving —
+plus the worst-case measurement: rows are stamped at cycle start, so during an outage every down
+sample lands already up to WARM_MEASURE_MAX seconds old and would otherwise read as stale.
 """
 
 

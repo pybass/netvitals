@@ -53,7 +53,7 @@ it. The API, grouped:
 | History | `warm/cold/dns/vpn/ip_history(limit)` | the newest recorded rows, oldest first; the newest element doubles as the current state |
 | Monitor data | `record_heartbeat(started_at, now)`, `monitor_state()` | Core stores and serves the heartbeat row without knowing what process writes it |
 | Maintenance | `purge(now)` | delete rows past retention |
-| Infra | `data_dir`, `DEFAULT_DATA_DIR`, `crash_log`, `monitor_lock`, `tray_lock`, `debug`, `log_to_terminal()`, `close()` | the directory is created, and logging configured, in `Core.__init__` |
+| Infra | `data_dir`, `DEFAULT_DATA_DIR`, `WARM_MEASURE_MAX`, `crash_log`, `monitor_lock`, `tray_lock`, `debug`, `log_to_terminal()`, `close()` | the directory is created, and logging configured, in `Core.__init__` |
 
 Core owns the data directory: it creates it, it names everything in it, and it owns where the
 directory sits without `--data-dir` (`DEFAULT_DATA_DIR`, a fixed `~/.local/share/netvitals` — see

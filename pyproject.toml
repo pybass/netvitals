@@ -3,7 +3,7 @@
 # ============================================================================
 [project]
 name = "netvitals"
-version = "0.0.3"
+version = "0.0.4"
 description = "Internet connection monitor for macOS"
 readme = "README.md"
 authors = [{ name = "pybass" }]
@@ -23,11 +23,11 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp~=3.14.3",
-    "cyclopts~=4.22.2",
+    "cyclopts~=4.22.5",
     "dnspython~=2.8",
     "psutil~=7.2",
-    "pyobjc-core~=12.1 ; sys_platform == 'darwin'",
-    "pyobjc-framework-cocoa~=12.1 ; sys_platform == 'darwin'",
+    "pyobjc-core~=12.2.2 ; sys_platform == 'darwin'",
+    "pyobjc-framework-cocoa~=12.2.2 ; sys_platform == 'darwin'",
     "rich~=15.0",
     "textual~=8.2",
 ]
@@ -47,7 +47,7 @@ netvitals = "netvitals.cli.main:main"
 # uv.lock does not cover, so an open-ended requirement would let the same tag build differently
 # over time.
 [build-system]
-requires = ["uv_build>=0.11,<0.12"]
+requires = ["uv_build>=0.11,<0.13"]
 build-backend = "uv_build"
 
 
@@ -57,7 +57,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     # Linting & formatting
-    "ruff~=0.16.0",
+    "ruff~=0.16.3",
     # Type checking
     "mypy~=2.3.0",
     # Testing & coverage
@@ -70,7 +70,7 @@ dev = [
     # Dependency hygiene — imports vs declared deps
     "deptry~=0.25.1",
     # Git pre-commit hooks
-    "pre-commit~=4.6.1",
+    "pre-commit~=4.6.2",
     "types-psutil~=7.2",
 ]
 
@@ -87,7 +87,6 @@ select = ["ALL"]
 ignore = [
     # --- Ecosystem / tool conflicts ---
     "COM812",   # trailing-comma — handled by ruff formatter, must be off here
-    "ISC001",   # single-line-implicit-string-concat — conflicts with ruff formatter
     "D203",     # one-blank-line-before-class — conflicts with D211
     "D213",     # multi-line-summary-second-line — conflicts with D212
 
@@ -117,10 +116,6 @@ ignore = [
     "PLR0912",  # too-many-branches
     "PLR0913",  # too-many-arguments
     "PLR2004",  # magic-value-comparison
-
-    # --- TODO metadata (optional) ---
-    "TD002",    # missing-todo-author
-    "TD003",    # missing-todo-link
 
     # --- Async edge case ---
     "ASYNC109", # async-function-with-timeout — debatable, off

@@ -8,6 +8,7 @@ from pathlib import Path
 from netvitals.core import logs
 from netvitals.core.db import Db
 from netvitals.core.models import DnsRow, DnsSample, IpRow, LatencyRow, LatencySample, MonitorState, Snapshot, VpnRow, VpnSample
+from netvitals.core.probes import latency
 from netvitals.core.probes.dns import measure_dns
 from netvitals.core.probes.ip import detect_public_ip, resolve_country
 from netvitals.core.probes.latency import WarmLatencyProbe, measure_cold_latency
@@ -21,6 +22,9 @@ class Core:
     everything: they never import the database or the probes directly. What a client needs
     appears here as a method; what only Core needs stays private.
     """
+
+    WARM_MEASURE_MAX = latency.WARM_MEASURE_MAX
+    """Worst-case seconds one warm measurement can take; a freshness judgement must budget for it."""
 
     DEFAULT_DATA_DIR = Path.home() / ".local" / "share" / "netvitals"
     """Where the data lives without `--data-dir`.
