@@ -1,21 +1,13 @@
 # Python
 __pycache__
-*.egg-info
-pip-wheel-metadata
 
 # Build artifacts
 /dist
-/build
 
 # Tool caches
 .pytest_cache
 .mypy_cache
 .ruff_cache
-
-# Coverage
-.coverage
-.coverage.*
-htmlcov/
 
 # Environments
 .venv
@@ -30,8 +22,3 @@ htmlcov/
 
 # Personal dev scratch (notes, configs, temp code snippets) — never committed
 tmp/
-
-# AI assistants — personal agent configs, never committed
-CLAUDE.md
-.claude/
-.codex/

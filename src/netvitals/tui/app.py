@@ -5,6 +5,9 @@ VPN/IP events list, and a footer with monitor liveness. On wide terminals the ev
 list moves beside the sparklines. Hotkeys open a history screen per probe series.
 """
 
+# push_screen() returns an AwaitMount that Textual drives itself; awaiting it is optional.
+# mypy: disable-error-code="unused-awaitable"
+
 import time
 from typing import ClassVar
 

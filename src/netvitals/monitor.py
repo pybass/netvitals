@@ -7,6 +7,9 @@ the process controls adapters call (`run_monitor`, `start_monitor`, `stop_monito
 `monitor_status`), built on the generic lock-and-spawn machinery in `process.py`.
 """
 
+# create_task() hands the Task to the TaskGroup; `async with` awaits them all on exit.
+# mypy: disable-error-code="unused-awaitable"
+
 import asyncio
 import contextlib
 import logging
