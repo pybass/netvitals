@@ -66,7 +66,9 @@ mean roughly 260k identical `vpn` rows a month. Instead each check compares agai
 
 Compared fields are `(active, mode, interface, provider)` and `(ip, country)`. The consequence for
 queries: `created_at` is the timeline of genuine changes (what an events view wants), while
-`updated_at` is "still true as of".
+`updated_at` is "still true as of". The current state is the row with the newest `updated_at` — the
+same row the next check compares against — never the newest `created_at`: a lookup that outlives a
+machine sleep records with a `now` older than a row a concurrent lookup already bumped.
 
 ## Retention
 

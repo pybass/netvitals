@@ -1,6 +1,6 @@
 [project]
 name = "netvitals"
-version = "0.0.4"
+version = "0.0.5"
 description = "Internet connection monitor for macOS"
 readme = "README.md"
 authors = [{ name = "pybass" }]
@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp==3.14.3",
-    "cyclopts==4.23.2",
+    "cyclopts==4.25.2",
     "dnspython==2.8.0",
     "psutil==7.2.2",
     "pyobjc-core==12.2.2 ; sys_platform == 'darwin'",
@@ -42,10 +42,10 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     # Linting & formatting
-    "ruff~=0.16.4",
+    "ruff~=0.16.6",
     # Type checking
     "mypy~=2.3.1",
-    "types-psutil~=7.2",
+    "types-psutil~=7.2.2.20260906",
     # Testing
     "pytest~=9.1.1",
     "pytest-xdist~=3.8.0",

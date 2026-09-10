@@ -184,6 +184,11 @@ class Db:
     #
     # Chronological order is what every consumer renders (sparklines, event lists), so the
     # DESC LIMIT window is reversed here once instead of by each caller.
+    #
+    # The deduplicated tables order by `updated_at`, the key the upserts compare against, so the
+    # "current" row here is the row the next check will bump. Ordering by `created_at` disagrees
+    # after a lookup that outlived a machine sleep: its `now` predates the row a concurrent lookup
+    # already bumped, so its failure row is newest by creation yet never seen by dedup again.
 
     def fetch_recent_warm(self, limit: int) -> list[LatencyRow]:
         """Return the newest *limit* warm-latency samples, oldest first."""
@@ -211,7 +216,7 @@ class Db:
     def fetch_recent_vpn(self, limit: int) -> list[VpnRow]:
         """Return the newest *limit* VPN state changes, oldest first; the last one is the current state."""
         rows = self.conn.execute(
-            "SELECT created_at, updated_at, active, mode, interface, provider FROM vpn ORDER BY created_at DESC LIMIT ?",
+            "SELECT created_at, updated_at, active, mode, interface, provider FROM vpn ORDER BY updated_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
         return [VpnRow.from_row(row) for row in reversed(rows)]
@@ -219,7 +224,7 @@ class Db:
     def fetch_recent_ip(self, limit: int) -> list[IpRow]:
         """Return the newest *limit* public-IP state changes, oldest first; the last one is the current state."""
         rows = self.conn.execute(
-            "SELECT created_at, updated_at, ip, country FROM ip ORDER BY created_at DESC LIMIT ?", (limit,)
+            "SELECT created_at, updated_at, ip, country FROM ip ORDER BY updated_at DESC LIMIT ?", (limit,)
         ).fetchall()
         return [IpRow.from_row(row) for row in reversed(rows)]
 
