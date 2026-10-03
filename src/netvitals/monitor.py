@@ -40,6 +40,15 @@ VPN_INTERVAL = 10.0
 IP_INTERVAL = 60.0
 """Seconds between public-IP lookups: the services are quota-limited and the address rarely changes."""
 
+IP_RETRY_STEP = 5.0
+"""Seconds from the start of a failed public-IP lookup to its first retry, and how much longer each next retry waits.
+
+The pause grows 5, 10, 15, ... and the retries end once it reaches IP_INTERVAL: a network where the
+lookup services stay unreachable must not be asked every few seconds forever. It runs start to
+start, so a lookup that used up its timeout is retried right away. Also the tick of the IP loop, so
+every pause is a whole number of ticks.
+"""
+
 PURGE_INTERVAL = 3600.0
 """Seconds between retention purges."""
 
@@ -71,6 +80,9 @@ class Monitor:
         """Initialize with the Core that measures and records."""
         self._core = core  # Does the actual work: probes and storage
         self._vpn_active: bool | None = None  # Previous VPN state, to notice a change; None before the first check
+        self._warm_ok = False  # Whether the newest warm sample succeeded: a public-IP retry waits for a working network
+        self._ip_checked_at = 0.0  # UTC Unix seconds of the last public-IP check; 0 before the first
+        self._ip_retry_pause = 0.0  # Seconds from a failed public-IP check to its retry; 0 while the address is known
         self._started_at = 0.0  # UTC Unix seconds when run() began; reported in the heartbeat
         self._shutdown = asyncio.Event()  # Set by SIGTERM/SIGINT; every loop exits at its next wake
 
@@ -87,7 +99,7 @@ class Monitor:
                 tasks.create_task(self._loop("cold", COLD_INTERVAL, self._core.sample_cold))
                 tasks.create_task(self._loop("dns", DNS_INTERVAL, self._core.sample_dns))
                 tasks.create_task(self._loop("vpn", VPN_INTERVAL, self._detect_vpn))
-                tasks.create_task(self._loop("ip", IP_INTERVAL, self._core.sample_ip))
+                tasks.create_task(self._loop("ip", IP_RETRY_STEP, self._check_ip))
                 tasks.create_task(self._loop("purge", PURGE_INTERVAL, self._purge))
         except* Exception as failures:
             # Nothing above us will report this: when spawned in the background there is no
@@ -172,7 +184,8 @@ class Monitor:
         The heartbeat rides the fastest loop so readers can trust it as "the monitor was alive a
         moment ago" without a loop of its own.
         """
-        await self._core.sample_warm(now)
+        sample = await self._core.sample_warm(now)
+        self._warm_ok = sample.latency_ms is not None
         self._core.record_heartbeat(self._started_at, now)
 
     async def _detect_vpn(self, now: float) -> None:
@@ -180,10 +193,37 @@ class Monitor:
         sample = await self._core.sample_vpn(now)
         if self._vpn_active is not None and sample.active != self._vpn_active:
             log.info("monitor[vpn]: active %s -> %s, checking the public IP now", self._vpn_active, sample.active)
-            # The exit point almost certainly moved. The IP loop's own grid may repeat this check
-            # seconds later — one redundant lookup per VPN change, deduplicated in storage.
-            await self._core.sample_ip(now)
+            # The exit point almost certainly moved. The check often lands before the tunnel is up,
+            # so it gets its retries afresh even when an earlier outage used them up.
+            self._ip_retry_pause = 0.0
+            await self._sample_ip(now)
         self._vpn_active = sample.active
+
+    async def _check_ip(self, now: float) -> None:
+        """Look the public IP up when a check is due: every IP_INTERVAL, and sooner after a failed one.
+
+        Runs every IP_RETRY_STEP and mostly does nothing. A failed lookup is retried early only while
+        the warm probe sees a working network, and then with every service at once.
+        """
+        # abs: a wall clock set back must make the check due, not postpone it until the clock catches up.
+        # The half step: ticks land milliseconds off their grid, so a pause of exactly N ticks would be missed half the time.
+        since = abs(now - self._ip_checked_at) + IP_RETRY_STEP / 2
+        retry = self._warm_ok and 0 < self._ip_retry_pause < IP_INTERVAL and since >= self._ip_retry_pause
+        if retry or since >= IP_INTERVAL:
+            await self._sample_ip(now, every_service=retry)
+
+    async def _sample_ip(self, now: float, *, every_service: bool = False) -> None:
+        """Look the public IP up now, and set how long a failed lookup waits for its retry."""
+        ip = await self._core.sample_ip(now, every_service=every_service)
+        # After the lookup: one that raised must run again on the next tick. The idle ticks in
+        # between would otherwise reset the loop's count of consecutive failures.
+        self._ip_checked_at = now
+        if ip is not None:
+            self._ip_retry_pause = 0.0
+        elif every_service or self._ip_retry_pause == 0:
+            # The first failure starts the retries, and each failed retry waits one step longer. A
+            # failed regular check changes nothing: it ran because the retries ended or the network is down.
+            self._ip_retry_pause += IP_RETRY_STEP
 
     async def _purge(self, now: float) -> None:
         """Delete measurements older than the retention horizon."""

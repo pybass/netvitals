@@ -133,8 +133,10 @@ Detects the public IPv4 address and its country — which exit point traffic use
 especially after toggling a VPN.
 
 **IP detection:** race 2 randomly chosen services from the pool (random choice spreads
-load across providers), first valid response wins, and the winner must parse as an
-IPv4 address:
+load across providers). The first response that parses as an IPv4 address wins: an
+answer is validated inside the race, so a fast invalid one cannot beat a slower valid
+one. A retry after a failed detection races the whole pool instead — see
+[monitor.md](monitor.md).
 
 - `https://api.ipify.org`
 - `https://ipv4.icanhazip.com`
@@ -142,8 +144,21 @@ IPv4 address:
 - `https://ipinfo.io/ip`
 - `https://v4.ident.me`
 
-**Country resolution:** race the country services (`ipinfo.io`, `ipapi.co`), and the
-answer must be exactly two uppercase ASCII letters. Both functions are stateless;
-callers must cache country per IP (the services are quota-limited, and an IP's country
-never changes within our retention horizon), so a lookup happens only for a genuinely
-new IP.
+**Country resolution:** race every country service; the first answer that is exactly
+two uppercase ASCII letters wins. `ZZ` is rejected: it is how `api.db-ip.com` answers
+for an address it cannot place.
+
+- `https://ipinfo.io/{ip}/country` — plain text
+- `https://api.db-ip.com/v2/free/{ip}/countryCode` — plain text; 500 requests a day
+  without a key
+- `https://api.ip2location.io/?ip={ip}` — JSON, field `country_code`; 1000 requests a
+  day without a key
+
+Each operator maintains its own geolocation database, which is why these three were
+chosen. Their databases can disagree about an address; the answer that gets cached is
+the first one to arrive.
+
+Both functions are stateless and return a `LookupSample`: the value and the service
+that gave it, or every service's failure reason. Callers must cache country per IP (the
+services are quota-limited, and an IP's country never changes within our retention
+horizon), so a lookup happens only for a genuinely new IP.

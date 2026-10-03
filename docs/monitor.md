@@ -34,7 +34,7 @@ disappear, which no recycled pid can fake.
 | cold latency | 10 s | a full connection setup is too expensive to pay every cycle |
 | DNS | 10 s | one cycle queries every system resolver in parallel |
 | VPN | 10 s | a local routing lookup; the cost is negligible |
-| public IP | 60 s | the services are quota-limited and the address rarely changes |
+| public IP | 60 s | the services are quota-limited and the address rarely changes; a failed check is retried sooner (see below) |
 | purge | 1 h | retention housekeeping, also run once at startup |
 
 Every loop also runs immediately at startup, so a fresh monitor produces data at once instead of
@@ -43,8 +43,33 @@ liveness signal every 2 s without a loop of its own.
 
 A VPN state change triggers an immediate public-IP check from within the VPN loop: the exit
 address almost certainly moved, and waiting up to a minute to notice would be visible to the
-user. The IP loop's own grid may repeat the check seconds later — one redundant lookup per
-VPN change, deduplicated in storage.
+user. The 60 s cadence restarts from that check.
+
+### Public-IP retries
+
+A failed public-IP check is retried early. A check that lands on a wake from sleep or a VPN switch
+fails while the network comes back seconds later; without a retry the address — and the country in
+the menu bar — would stay unknown until the next 60 s check.
+
+The first retry waits 5 s and each next one 5 s longer (5, 10, 15, …). The pause runs from the
+start of one check to the start of the next, so a check that used up its 5 s timeout is retried
+right away. The retries end once the pause reaches the regular 60 s; the step resets when a check
+succeeds or the VPN state changes. Three rules keep this from becoming a flood:
+
+- A retry runs only while the newest warm sample succeeded. With the network down it cannot work;
+  the regular 60 s check keeps running.
+- The growing pause caps the retries at 11 per outage, about 5.5 minutes. A network where the
+  lookup services stay unreachable falls back to the regular cadence instead of being asked every
+  few seconds forever.
+- A retry races all five IP services instead of two: it is rare, and a quick answer matters more
+  than the load.
+
+This is scheduling, not a retry inside a probe: every check is still one request per service, and
+every failed check is still recorded.
+
+The log gets one WARNING for the first failed check of an outage, with each service's reason, and
+one INFO line when the address is detected again or changes, naming the service that reported it.
+Repeated failures in a row are logged at DEBUG only, so a long outage does not fill the log.
 
 ## Scheduling
 

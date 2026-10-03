@@ -1,6 +1,7 @@
 """Composition root — the single object every client works through."""
 
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -13,6 +14,8 @@ from netvitals.core.probes.dns import measure_dns
 from netvitals.core.probes.ip import detect_public_ip, resolve_country
 from netvitals.core.probes.latency import WarmLatencyProbe, measure_cold_latency
 from netvitals.core.probes.vpn import detect_vpn
+
+log = logging.getLogger(__name__)
 
 
 class Core:
@@ -53,6 +56,11 @@ class Core:
         self._warm_probe = WarmLatencyProbe()  # Pinned warm session for sampling; allocates nothing until first measure
         self._ip: str | None = None  # Last known public IP, to skip a redundant country lookup
         self._country: str | None = None  # Country of `_ip`
+        # Failed lookups in a row. Only the first is logged, and the recovery reports the rest: a
+        # line per failed check would repeat the same reason for as long as an outage lasts.
+        self._ip_failures = 0
+        self._ip_failed_at = 0.0  # UTC Unix seconds of the first failed public-IP check in the current run
+        self._country_failures = 0
         # Logging is wired here, not by each client: every client wants the same file log,
         # and a client that forgot to set it up would lose its records silently.
         logs.setup_logging(data_dir / "netvitals.log", debug=debug)
@@ -106,17 +114,44 @@ class Core:
         self._db.upsert_vpn(now, sample)
         return sample
 
-    async def sample_ip(self, now: float) -> None:
-        """Record the public IP, resolving its country only when the address is new to us."""
-        ip = await detect_public_ip()
+    async def sample_ip(self, now: float, *, every_service: bool = False) -> str | None:
+        """Record the public IP and return it, resolving its country only when the address is new to us.
+
+        *every_service* asks all IP services at once instead of two: for a retry after a failed check.
+        """
+        found = await detect_public_ip(every_service=every_service)
+        ip = found.value
         if ip is None:
+            if self._ip_failures == 0:
+                self._ip_failed_at = now
+                log.warning("ip: all services failed: %s", found.error)
+            self._ip_failures += 1
             self._country = None
         elif ip != self._ip:
             # A country already stored for this address is authoritative: an IP's country does not
             # change within our retention horizon, and the country services are quota-limited.
-            self._country = self._db.fetch_country_for_ip(ip) or await resolve_country(ip)
+            self._country = self._db.fetch_country_for_ip(ip) or await self._resolve_country(ip)
+            previous = f"{self._ip} -> " if self._ip else ""
+            outage = (
+                f", after {now - self._ip_failed_at:.0f} s and {self._ip_failures} failed check(s)" if self._ip_failures else ""
+            )
+            log.info("ip: %s%s (%s) via %s%s", previous, ip, self._country or "country unknown", found.source, outage)
+            self._ip_failures = 0  # Here is enough: a failed check clears `_ip`, so the next address always differs
         self._ip = ip
         self._db.upsert_ip(now, ip, self._country)
+        return ip
+
+    async def _resolve_country(self, ip: str) -> str | None:
+        """Ask the country services about *ip*, logging only the first failure in a row and the recovery."""
+        found = await resolve_country(ip)
+        if found.value is None:
+            if self._country_failures == 0:
+                log.warning("country: all services failed for %s: %s", ip, found.error)
+            self._country_failures += 1
+        elif self._country_failures:
+            log.info("country: resolved again after %d failed lookup(s)", self._country_failures)
+            self._country_failures = 0
+        return found.value
 
     # -- History: recorded samples served to readers, oldest first ---------------
     #
@@ -178,7 +213,11 @@ class Core:
 
 async def _ip_and_country() -> tuple[str | None, str | None]:
     """Detect the public IP, then resolve its country (skipped when the IP is unknown)."""
-    ip = await detect_public_ip()
-    if ip is None:
+    found = await detect_public_ip()
+    if found.value is None:
+        log.warning("ip: all services failed: %s", found.error)
         return None, None
-    return ip, await resolve_country(ip)
+    country = await resolve_country(found.value)
+    if country.value is None:
+        log.warning("country: all services failed for %s: %s", found.value, country.error)
+    return found.value, country.value

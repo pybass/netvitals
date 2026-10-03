@@ -61,6 +61,15 @@ class VpnSample:
 
 
 @dataclass(frozen=True, slots=True)
+class LookupSample:
+    """Outcome of asking several services for one value: the public IP, or its country."""
+
+    value: str | None  # The first valid answer; None when every service failed
+    source: str | None  # Host of the service that gave it; None when every service failed
+    error: str | None  # Every service's failure as "host: reason; ..."; None when one answered
+
+
+@dataclass(frozen=True, slots=True)
 class Snapshot:
     """Combined outcome of running every probe once."""
 
