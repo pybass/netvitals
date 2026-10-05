@@ -48,8 +48,8 @@ file, launchd integration, derived incidents — live at the end of [monitor.md]
   schedules. `snapshot` is the one exception that proves the rule: it measures live and records
   nothing ([monitor.md](monitor.md)).
 
-- **Self-daemonizing.** `monitor run` is a plain foreground process that stops on SIGTERM;
-  `monitor start` is a convenience spawn on top of it. Anything that wants to supervise the monitor
+- **Self-daemonizing.** `monitor --foreground` is a plain foreground process that stops on SIGTERM;
+  a bare `monitor` is a convenience spawn on top of it. Anything that wants to supervise the monitor
   can do so without fighting it ([monitor.md](monitor.md)).
 
 - **Platforms other than macOS.** The probes shell out to `scutil` and `route`, and the tray is

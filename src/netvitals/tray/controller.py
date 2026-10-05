@@ -208,7 +208,7 @@ def start_tray(core: Core) -> int:
     Raises AppError when one is already showing, or when the spawned one dies before taking the
     lock (its story is in the log file).
     """
-    return process.start_detached(core, ["tray", "run"], core.tray_lock, what="tray")
+    return process.start_detached(core, ["tray", "--foreground"], core.tray_lock, what="tray")
 
 
 def stop_tray(core: Core) -> int | None:

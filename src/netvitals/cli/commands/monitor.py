@@ -3,25 +3,28 @@
 import asyncio
 import time
 from datetime import UTC, datetime
+from typing import Annotated
 
-from cyclopts import App
+from cyclopts import App, Parameter
 
 from netvitals import monitor
 from netvitals.cli import utils
 
-app = App(name="monitor", help="The process that measures continuously.", sort_key=1)  # after snapshot
+app = App(name="monitor", help="The measuring process; starts it when given no command.", sort_key=1)  # after snapshot
 
 
-@app.command(name="run", sort_key=3)
-def run(*, core: utils.InjectedCore) -> None:
-    """Measure continuously in the foreground until interrupted, recording everything."""
-    asyncio.run(monitor.run_monitor(core))
-
-
+@app.default
 @app.command(name="start", sort_key=0)
-def start(*, core: utils.InjectedCore) -> None:
+def start(
+    *,
+    foreground: Annotated[bool, Parameter(help="Measure in this terminal until interrupted.")] = False,
+    core: utils.InjectedCore,
+) -> None:
     """Start the monitor in the background."""
-    utils.console.print(f"monitor: started (pid {monitor.start_monitor(core)})")
+    if foreground:
+        asyncio.run(monitor.run_monitor(core))
+    else:
+        utils.console.print(f"monitor: started (pid {monitor.start_monitor(core)})")
 
 
 @app.command(name="stop", sort_key=1)

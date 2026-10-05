@@ -73,9 +73,10 @@ being read.
 ## Process
 
 ```
-netvitals tray start    # detached; prints the pid
-netvitals tray stop     # SIGTERM, confirmed by the lock being released
-netvitals tray run      # foreground, for debugging
+netvitals tray                # detached; prints the pid. `tray start` is the same command
+netvitals tray --foreground   # foreground, for debugging
+netvitals tray stop           # SIGTERM, confirmed by the lock being released
+netvitals tray status         # whether an icon is running
 ```
 
 One icon per data dir, enforced by an `flock` on `<data-dir>/tray.lock` — the same machinery the

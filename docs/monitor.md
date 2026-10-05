@@ -5,14 +5,15 @@ it measures; the dashboard, tray, and CLI only read what it wrote. One writer me
 shows the same numbers, taken once — not four clients probing the network on their own schedules.
 
 It is deliberately not called a daemon: "daemon" describes how a process is started, not what it
-does, and `monitor run` runs in the foreground. See `src/netvitals/monitor.py`.
+does, and the monitor itself is a plain foreground process (`monitor --foreground`). See
+`src/netvitals/monitor.py`.
 
 ## Running it
 
 | command | what it does |
 |---|---|
-| `netvitals monitor run` | run in the foreground; logs to the terminal as well as the log file. Ctrl-C stops it. This is what a supervisor should run. |
-| `netvitals monitor start` | spawn a background monitor (`python -m netvitals … monitor run`) detached from the terminal, with its output to `<data-dir>/crash.log`. Waits until the new monitor holds the lock, so a start that silently dies is reported as an error, not as success. |
+| `netvitals monitor` | spawn a background monitor (`python -m netvitals … monitor --foreground`) detached from the terminal, with its output to `<data-dir>/crash.log`. Waits until the new monitor holds the lock, so a start that silently dies is reported as an error, not as success. `netvitals monitor start` is the same command. |
+| `netvitals monitor --foreground` | run in the foreground; logs to the terminal as well as the log file. Ctrl-C stops it. This is what a supervisor should run. |
 | `netvitals monitor stop` | SIGTERM the running monitor and wait for it to exit. |
 | `netvitals monitor status` | whether a monitor is running, and how old its last heartbeat is. |
 

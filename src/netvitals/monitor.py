@@ -257,7 +257,7 @@ def start_monitor(core: Core) -> int:
     Raises AppError when a monitor is already running, or when the spawned one dies before taking
     the lock (its story is in the log file).
     """
-    return process.start_detached(core, ["monitor", "run"], core.monitor_lock, what="monitor")
+    return process.start_detached(core, ["monitor", "--foreground"], core.monitor_lock, what="monitor")
 
 
 def stop_monitor(core: Core) -> int | None:

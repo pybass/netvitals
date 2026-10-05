@@ -15,10 +15,10 @@ macOS only. Requires Python 3.14+.
 ## Usage
 
 ```sh
-netvitals monitor start   # measure continuously in the background
-netvitals                 # dashboard
-netvitals tray start      # menu bar icon
-netvitals snapshot        # measure once and print the result
+netvitals monitor    # measure continuously in the background
+netvitals            # dashboard
+netvitals tray       # menu bar icon
+netvitals snapshot   # measure once and print the result
 ```
 
 The monitor does not come back after a reboot yet — start it again.
