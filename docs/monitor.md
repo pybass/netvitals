@@ -3,6 +3,8 @@
 The monitor is the process that measures. It runs every probe on its own cadence and records what
 it measures; the dashboard, tray, and CLI only read what it wrote. One writer means every client
 shows the same numbers, taken once — not four clients probing the network on their own schedules.
+A snapshot — the CLI command or the tray's window — is the exception: it measures once, on request,
+and records nothing.
 
 It is deliberately not called a daemon: "daemon" describes how a process is started, not what it
 does, and the monitor itself is a plain foreground process (`monitor --foreground`). See

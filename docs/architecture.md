@@ -48,7 +48,7 @@ it. The API, grouped:
 
 | Group | Members | Notes |
 |---|---|---|
-| Snapshot | `take_snapshot()` | live one-shot measurement of everything; records nothing |
+| Snapshot | `take_snapshot(known_countries, on_progress)` | live one-shot measurement of everything; records nothing. `on_progress` reports each probe as it finishes |
 | Sampling | `sample_warm/cold/dns/vpn/ip(now)`, `reset_warm()` | measure via probes **and** record to the database; the monitor's workhorses |
 | History | `warm/cold/dns/vpn/ip_history(limit)` | the newest recorded rows, oldest first; the newest element doubles as the current state |
 | Monitor data | `record_heartbeat(started_at, now)`, `monitor_state()` | Core stores and serves the heartbeat row without knowing what process writes it |

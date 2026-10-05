@@ -10,6 +10,7 @@ from netvitals.core.errors import AppError
 from netvitals.core.models import DnsRow, IpRow, LatencyRow, VpnRow
 from netvitals.status import Health, Status, current_status
 from netvitals.tray.appkit import MenuItem, MenuSeparator, TrayApp
+from netvitals.tray.snapshot import SnapshotWindow
 
 log = logging.getLogger(__name__)
 
@@ -53,8 +54,9 @@ class TrayController:
 
     def __init__(self, core: Core) -> None:
         """Build the static menu; the first refresh fills in every title."""
-        self._core = core  # Read side only: the tray never measures, it shows what the monitor recorded
+        self._core = core  # Read side only: the icon and the menu show what the monitor recorded
         self._app = TrayApp("  ")  # The refresh in run() sets the real label and icon before anyone sees it
+        self._snapshot = SnapshotWindow(core)  # The one place the tray measures by itself, and only on request
         # A warning row above the numbers, shown only when the icon is not reporting a measurement:
         # without it, last-known values look current and the icon looks broken rather than honest.
         self._warning_item = MenuItem("", hidden=True)
@@ -75,6 +77,8 @@ class TrayController:
                 self._dns_item,
                 self._vpn_item,
                 self._ip_item,
+                MenuSeparator(),
+                MenuItem("Snapshot...", callback=self._snapshot.open),
                 MenuSeparator(),
                 self._start_item,
                 self._stop_item,

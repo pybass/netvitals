@@ -45,8 +45,9 @@ file, launchd integration, derived incidents — live at the end of [monitor.md]
 
 - **A second writer.** Only the monitor records. Every other client reads what it wrote, so they all
   show the same numbers, taken once, instead of four clients probing the network on their own
-  schedules. `snapshot` is the one exception that proves the rule: it measures live and records
-  nothing ([monitor.md](monitor.md)).
+  schedules. A snapshot — the `snapshot` command or the tray's Snapshot window — is the one
+  exception that proves the rule: it measures live, on request, and records nothing
+  ([monitor.md](monitor.md)).
 
 - **Self-daemonizing.** `monitor --foreground` is a plain foreground process that stops on SIGTERM;
   a bare `monitor` is a convenience spawn on top of it. Anything that wants to supervise the monitor

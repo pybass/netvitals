@@ -1,11 +1,12 @@
-"""Typed wrapper around pyobjc for a macOS menu bar item: TrayApp, MenuItem, MenuSeparator.
+"""Typed wrapper around pyobjc for a macOS menu bar item and its window: TrayApp, MenuItem, MenuSeparator, Window.
 
 Objective-C selectors, NSObject subclassing, and run-loop timers stay in here, so the tray above it
-reads as menu rows and Python callbacks. Everything runs on the main thread — there is no
-cross-thread plumbing — and nothing here knows what netvitals measures.
+reads as menu rows and Python callbacks. AppKit may be touched from the main thread only:
+`call_on_main` is the one way in from any other thread. Nothing here knows what netvitals measures.
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, Self
 
 # pyobjc resolves framework classes at runtime and ships no stubs; the missing-import errors for
@@ -14,17 +15,45 @@ import objc
 from AppKit import (
     NSApplication,
     NSApplicationActivationPolicyAccessory,
+    NSBackingStoreBuffered,
+    NSButton,
+    NSColor,
+    NSControlSizeSmall,
     NSImage,
     NSImageTrailing,
+    NSLineBreakByTruncatingTail,
     NSMenu,
     NSMenuItem,
+    NSProgressIndicator,
+    NSProgressIndicatorStyleSpinning,
     NSStatusBar,
+    NSTextField,
     NSVariableStatusItemLength,
+    NSWindow,
+    NSWindowStyleMaskClosable,
+    NSWindowStyleMaskTitled,
 )
-from Foundation import NSObject, NSRunLoop, NSRunLoopCommonModes, NSTimer
+from Foundation import NSMakeRect, NSObject, NSRunLoop, NSRunLoopCommonModes, NSTimer
 from PyObjCTools import AppHelper
 
 from netvitals.core.errors import AppError
+
+# Window geometry, in points. The width is fixed: rows are replaced while the window is being read,
+# and a window that also changed its width with every result would never sit still.
+_WINDOW_WIDTH = 460.0
+_WINDOW_MARGIN = 16.0  # Between the window edge and its content, and above the footer
+_ROW_HEIGHT = 22.0
+_LABEL_WIDTH = 104.0  # The label column; the values start right after it
+_SPINNER_SIZE = 16.0  # What AppKit draws for a small spinning indicator
+_SPINNER_GAP = 6.0  # Between a value and the spinner after it
+
+
+def call_on_main[**P](callback: Callable[P, None], *args: P.args, **kwargs: P.kwargs) -> None:
+    """Schedule *callback* on the main thread and return at once; safe to call from any thread.
+
+    Calls made from one thread run in the order they were made.
+    """
+    AppHelper.callAfter(callback, *args, **kwargs)
 
 
 class MenuSeparator:
@@ -70,6 +99,7 @@ class _Dispatcher(NSObject):  # type: ignore[misc]  # pyobjc ships no stubs, so 
         self = objc.super(_Dispatcher, self).init()  # noqa: PLW0642  # reassigning self is pyobjc's documented init pattern
         self.callbacks: list[Callable[[], None]] = []
         self.timer_callback: Callable[[], None] | None = None
+        self.button_callback: Callable[[], None] | None = None
         return self
 
     def menuItemClicked_(self, sender: object) -> None:  # noqa: N802  # Objective-C selector name
@@ -82,6 +112,136 @@ class _Dispatcher(NSObject):  # type: ignore[misc]  # pyobjc ships no stubs, so 
         if self.timer_callback is not None:
             self.timer_callback()
 
+    def buttonClicked_(self, _sender: object) -> None:  # noqa: N802  # Objective-C selector name
+        """Run the button callback on every click."""
+        if self.button_callback is not None:
+            self.button_callback()
+
+
+@dataclass(frozen=True, slots=True)
+class Row:
+    """One line of a Window: a label, its value, and whether the value is still on its way."""
+
+    label: str
+    value: str = ""
+    busy: bool = False  # Draws a spinner after the value; alone in the row while the value is empty
+
+
+class Window:
+    """A small window: label/value rows above a footer with a status line and one button.
+
+    Closing the window only hides it, so `show()` brings the same Window back with its rows intact.
+    """
+
+    def __init__(self, title: str, *, button: str, on_button: Callable[[], None]) -> None:
+        """Build the window without showing it; *on_button* runs on every click of the footer button."""
+        self._dispatcher: Any = _Dispatcher.alloc().init()
+        self._dispatcher.button_callback = on_button
+        self._window: Any = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, _WINDOW_WIDTH, 0), NSWindowStyleMaskTitled | NSWindowStyleMaskClosable, NSBackingStoreBuffered, False
+        )
+        self._window.setTitle_(title)
+        # AppKit frees a window when it closes unless told otherwise, and the next show() would crash.
+        self._window.setReleasedWhenClosed_(False)
+        self._row_views: list[Any] = []  # Every view of the current rows, to remove them on the next set_rows()
+
+        self._button: Any = NSButton.buttonWithTitle_target_action_(button, self._dispatcher, "buttonClicked:")
+        self._button.setKeyEquivalent_("\r")  # The default button: Return clicks it
+        self._button.sizeToFit()
+        button_size = self._button.frame().size
+        self._button.setFrameOrigin_((_WINDOW_WIDTH - _WINDOW_MARGIN - button_size.width, _WINDOW_MARGIN))
+        self._footer_height: float = button_size.height
+        self._status: Any = NSTextField.labelWithString_(" ")  # A blank, so sizeToFit() yields the height of a line
+        self._status.setTextColor_(NSColor.secondaryLabelColor())
+        self._status.sizeToFit()
+        status_height = self._status.frame().size.height
+        self._status.setFrame_(
+            NSMakeRect(
+                _WINDOW_MARGIN,
+                _WINDOW_MARGIN + (button_size.height - status_height) / 2,
+                _WINDOW_WIDTH - 3 * _WINDOW_MARGIN - button_size.width,
+                status_height,
+            )
+        )
+        self._window.contentView().addSubview_(self._button)
+        self._window.contentView().addSubview_(self._status)
+
+        # An accessory app shows no menu bar, but key equivalents are still looked up in the main
+        # menu: without these entries Cmd-C copies nothing and Cmd-W does not close the window.
+        shortcuts = NSMenu.alloc().init()
+        shortcuts.addItemWithTitle_action_keyEquivalent_("Copy", "copy:", "c")
+        shortcuts.addItemWithTitle_action_keyEquivalent_("Close", "performClose:", "w")
+        holder = NSMenuItem.alloc().init()
+        holder.setSubmenu_(shortcuts)
+        main_menu = NSMenu.alloc().init()
+        main_menu.addItem_(holder)
+        NSApplication.sharedApplication().setMainMenu_(main_menu)
+
+        self.set_rows(())
+        self._window.center()
+
+    def show(self) -> None:
+        """Bring the window to the front, reopening it when it was closed."""
+        # An accessory app is never frontmost by itself: without activation the window opens behind
+        # whatever the user was working in.
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        self._window.makeKeyAndOrderFront_(None)
+
+    def set_rows(self, rows: Sequence[Row]) -> None:
+        """Replace every row, and grow or shrink the window downwards to fit them."""
+        for view in self._row_views:
+            view.removeFromSuperview()
+        self._row_views.clear()
+
+        height = 3 * _WINDOW_MARGIN + self._footer_height + len(rows) * _ROW_HEIGHT
+        old = self._window.frame()
+        new = self._window.frameRectForContentRect_(NSMakeRect(0, 0, _WINDOW_WIDTH, height))
+        # The origin is the bottom-left corner: hold the top edge, or the title bar jumps on every change.
+        self._window.setFrame_display_(
+            NSMakeRect(old.origin.x, old.origin.y + old.size.height - new.size.height, new.size.width, new.size.height), True
+        )
+
+        value_x = _WINDOW_MARGIN + _LABEL_WIDTH
+        for index, row in enumerate(rows):
+            bottom = height - _WINDOW_MARGIN - (index + 1) * _ROW_HEIGHT
+            label = NSTextField.labelWithString_(row.label)
+            label.setTextColor_(NSColor.secondaryLabelColor())
+            self._add_row_view(label, _WINDOW_MARGIN, bottom, _LABEL_WIDTH)
+            spinner_x = value_x
+            if row.value:
+                value = NSTextField.labelWithString_(row.value)
+                value.setSelectable_(True)
+                value.setLineBreakMode_(NSLineBreakByTruncatingTail)
+                value.sizeToFit()
+                # Room for a spinner is always kept, so a long value truncates the same with and without one.
+                room = _WINDOW_WIDTH - _WINDOW_MARGIN - value_x - _SPINNER_SIZE - _SPINNER_GAP
+                width = min(value.frame().size.width, room)
+                self._add_row_view(value, value_x, bottom, width)
+                spinner_x += width + _SPINNER_GAP
+            if row.busy:
+                spinner = NSProgressIndicator.alloc().init()
+                spinner.setStyle_(NSProgressIndicatorStyleSpinning)
+                spinner.setControlSize_(NSControlSizeSmall)
+                spinner.startAnimation_(None)
+                self._add_row_view(spinner, spinner_x, bottom, _SPINNER_SIZE)
+
+    def _add_row_view(self, view: object, x: float, row_bottom: float, width: float) -> None:
+        """Place *view* in its row, centered vertically at its own natural height."""
+        ns_view: Any = view  # NSView: its methods need dynamic access
+        ns_view.sizeToFit()
+        view_height = ns_view.frame().size.height
+        ns_view.setFrame_(NSMakeRect(x, row_bottom + (_ROW_HEIGHT - view_height) / 2, width, view_height))
+        self._window.contentView().addSubview_(ns_view)
+        self._row_views.append(ns_view)
+
+    def set_status(self, text: str) -> None:
+        """Replace the status line in the footer."""
+        self._status.setStringValue_(text)
+
+    def set_button_enabled(self, enabled: bool) -> None:
+        """Enable or grey out the footer button."""
+        self._button.setEnabled_(enabled)
+
 
 class TrayApp:
     """A macOS menu bar item: a text label, an icon beside it, a dropdown menu, and a poll timer."""
@@ -89,7 +249,7 @@ class TrayApp:
     def __init__(self, title: str) -> None:
         """Create the status bar item and the callback dispatcher."""
         self._nsapp = NSApplication.sharedApplication()  # The process-wide AppKit application
-        # Accessory: a menu bar item with no Dock tile and no app menu — this process has no windows.
+        # Accessory: a menu bar item with no Dock tile and no app menu.
         self._nsapp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
         self._item = NSStatusBar.systemStatusBar().statusItemWithLength_(NSVariableStatusItemLength)  # Our slot in the bar
         self._button = self._item.button()  # Title and image host since 10.10; NSStatusItem.setTitle_ is deprecated

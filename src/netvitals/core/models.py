@@ -82,6 +82,26 @@ class Snapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class IpSample:
+    """The public address and its country, as a snapshot in progress reports them."""
+
+    ip: str | None  # Public IPv4 address; None when undetectable
+    country: str | None  # 2-letter ISO country code; None when unresolved, or while `country_pending`
+    country_pending: bool  # The country lookup is still running, and a second sample will follow
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotProgress:
+    """A snapshot while its probes still run: a field stays None until its probe has finished."""
+
+    latency_warm: LatencySample | None = None
+    latency_cold: LatencySample | None = None
+    vpn: VpnSample | None = None
+    ip: IpSample | None = None  # Set twice when the country must be looked up: first with the address alone
+    dns: DnsSample | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class LatencyRow:
     """One stored latency sample; warm and cold tables share this shape."""
 

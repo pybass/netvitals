@@ -1,8 +1,8 @@
 # Tray
 
-The menu bar client. It measures nothing: it reads what the monitor recorded and answers one
-question — *is the connection ok right now* — in a single character. The numbers behind that
-answer live in the dropdown.
+The menu bar client. The icon and the menu measure nothing: they read what the monitor recorded and
+answer one question — *is the connection ok right now* — in a single character. The numbers behind
+that answer live in the dropdown. Only the Snapshot window measures, and only when asked.
 
 ## The icon
 
@@ -53,6 +53,8 @@ DNS: 21 ms (192.168.1.1)
 VPN: full tunnel (Happ Plus)
 IP: 212.6.44.17 (LV)
 --------
+Snapshot...              <- opens the Snapshot window and starts a check
+--------
 Start monitor            <- exactly one of the two is visible
 Stop monitor
 --------
@@ -69,6 +71,43 @@ freezes for that moment and then reopens showing what actually happened.
 The refresh runs every 2 s — the warm cadence, the fastest series there is — and keeps running
 while the menu is open, so an open dropdown stays live instead of freezing exactly while it is
 being read.
+
+## The Snapshot window
+
+```
+Latency warm   44 ms (detectportal.firefox.com)
+Latency cold   95 ms (detectportal.firefox.com)
+VPN            active (full tunnel, utun8, Happ Plus)
+IP             31.59.218.100 (EE)
+DNS            70 ms (8.8.8.8)        <- one row per system resolver
+
+Checked 14:32:07                      [Check again]
+```
+
+The menu shows what the monitor last recorded. The window answers a different question: *what does
+the network say right now, because I asked*. It is `netvitals snapshot` in a window — the tray runs
+every probe once by itself and records nothing, so it works with the monitor stopped and never
+becomes a second writer.
+
+Three things make a check trustworthy:
+
+- **Every check starts from empty rows.** Opening the window or pressing `Check again` replaces
+  every value with a spinner, so a number on screen can only come from the check that is running.
+- **Each row fills in as soon as its own probe finishes.** A fast DNS answer does not wait for a
+  slow latency probe. The IP row fills in twice: the address first, then its country.
+- **The footer says when.** `Checking...` while probes run, then `Checked` with the time the last
+  one finished.
+
+A window rather than a submenu: a menu closes on the first click elsewhere, and the usual reason to
+check again is that something was just changed elsewhere — a VPN switched, a cable moved. The
+window stays, and its values can be selected and copied.
+
+One check runs at a time; the button is off until it ends. Every probe has its own timeout, so a
+check ends by itself — about 10 s at worst, on a dead network.
+
+The country services are quota-limited, so a check asks them only for an address whose country is
+not known yet. Known means: resolved by an earlier check in this window, or the monitor's current
+address. The address itself is detected again on every check.
 
 ## Process
 

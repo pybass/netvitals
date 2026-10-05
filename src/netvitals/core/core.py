@@ -4,11 +4,25 @@ import asyncio
 import logging
 import os
 import sys
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from netvitals.core import logs
 from netvitals.core.db import Db
-from netvitals.core.models import DnsRow, DnsSample, IpRow, LatencyRow, LatencySample, MonitorState, Snapshot, VpnRow, VpnSample
+from netvitals.core.models import (
+    DnsRow,
+    DnsSample,
+    IpRow,
+    IpSample,
+    LatencyRow,
+    LatencySample,
+    MonitorState,
+    Snapshot,
+    SnapshotProgress,
+    VpnRow,
+    VpnSample,
+)
 from netvitals.core.probes import latency
 from netvitals.core.probes.dns import measure_dns
 from netvitals.core.probes.ip import detect_public_ip, resolve_country
@@ -56,6 +70,7 @@ class Core:
         self._warm_probe = WarmLatencyProbe()  # Pinned warm session for sampling; allocates nothing until first measure
         self._ip: str | None = None  # Last known public IP, to skip a redundant country lookup
         self._country: str | None = None  # Country of `_ip`
+        self._snapshot_countries: dict[str, str] = {}  # Country of every address a snapshot resolved, by address
         # Failed lookups in a row. Only the first is logged, and the recovery reports the rest: a
         # line per failed check would repeat the same reason for as long as an outage lasts.
         self._ip_failures = 0
@@ -69,20 +84,53 @@ class Core:
 
     # -- One-shot measurement ---------------------------------------------------
 
-    async def take_snapshot(self) -> Snapshot:
+    async def take_snapshot(
+        self,
+        *,
+        known_countries: Mapping[str, str] | None = None,
+        on_progress: Callable[[SnapshotProgress], None] | None = None,
+    ) -> Snapshot:
         """Run every probe concurrently and combine the results; records nothing.
 
         The warm probe elects an endpoint and warms its connection internally, so the
         returned warm sample is a true steady-state measurement even in a one-shot run.
+
+        *on_progress* receives everything known so far each time a probe finishes, so a client can
+        show results as they arrive instead of after the slowest one. *known_countries* maps an
+        address to its country; a match skips the quota-limited country lookup, and so does an
+        address an earlier snapshot of this Core already resolved.
         """
+        progress = SnapshotProgress()
+
+        def report(updated: SnapshotProgress) -> None:
+            nonlocal progress
+            progress = updated
+            if on_progress is not None:
+                on_progress(updated)
+
+        async def run[T](probe: Awaitable[T], merge: Callable[[T], SnapshotProgress]) -> T:
+            result = await probe
+            report(merge(result))
+            return result
+
         warm_probe = WarmLatencyProbe()
         try:
-            warm, cold, vpn, dns, (ip, country) = await asyncio.gather(
-                warm_probe.measure(), measure_cold_latency(), detect_vpn(), measure_dns(), _ip_and_country()
+            # Each lambda reads `progress` when its probe finishes, so it builds on every earlier result.
+            warm, cold, vpn, dns, ip = await asyncio.gather(
+                run(warm_probe.measure(), lambda sample: replace(progress, latency_warm=sample)),
+                run(measure_cold_latency(), lambda sample: replace(progress, latency_cold=sample)),
+                run(detect_vpn(), lambda sample: replace(progress, vpn=sample)),
+                run(measure_dns(), lambda sample: replace(progress, dns=sample)),
+                _ip_and_country(
+                    {**self._snapshot_countries, **(known_countries or {})},
+                    lambda sample: report(replace(progress, ip=sample)),
+                ),
             )
         finally:
             await warm_probe.aclose()
-        return Snapshot(latency_warm=warm, latency_cold=cold, vpn=vpn, ip=ip, country=country, dns=dns)
+        if ip.ip is not None and ip.country is not None:
+            self._snapshot_countries[ip.ip] = ip.country
+        return Snapshot(latency_warm=warm, latency_cold=cold, vpn=vpn, ip=ip.ip, country=ip.country, dns=dns)
 
     # -- Sampling: measure via probes and record to the database ----------------
 
@@ -211,13 +259,22 @@ class Core:
         self._db.close()
 
 
-async def _ip_and_country() -> tuple[str | None, str | None]:
-    """Detect the public IP, then resolve its country (skipped when the IP is unknown)."""
+async def _ip_and_country(known_countries: Mapping[str, str], report: Callable[[IpSample], None]) -> IpSample:
+    """Detect the public IP, then its country; *report* gets the address without waiting for the country.
+
+    The country lookup is skipped when the IP is unknown, or already in *known_countries*.
+    """
     found = await detect_public_ip()
-    if found.value is None:
+    ip = found.value
+    country = None
+    if ip is None:
         log.warning("ip: all services failed: %s", found.error)
-        return None, None
-    country = await resolve_country(found.value)
-    if country.value is None:
-        log.warning("country: all services failed for %s: %s", found.value, country.error)
-    return found.value, country.value
+    elif (country := known_countries.get(ip)) is None:
+        report(IpSample(ip=ip, country=None, country_pending=True))
+        resolved = await resolve_country(ip)
+        if resolved.value is None:
+            log.warning("country: all services failed for %s: %s", ip, resolved.error)
+        country = resolved.value
+    sample = IpSample(ip=ip, country=country, country_pending=False)
+    report(sample)
+    return sample
