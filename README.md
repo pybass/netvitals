@@ -10,7 +10,7 @@ Internet connection monitor for macOS: warm/cold latency, DNS, VPN state, public
 uv tool install netvitals
 ```
 
-macOS only. Requires Python 3.14+.
+macOS only. Requires Python 3.15+.
 
 ## Usage
 

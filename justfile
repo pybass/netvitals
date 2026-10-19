@@ -4,44 +4,39 @@ set default-list := true
 [group('setup')]
 sync:
     uv sync --all-extras --all-groups
-    uv run --no-sync pre-commit install
+    uv run pre-commit install
 
-# Bring .venv to the exact locked state — the gate every env-consuming recipe depends on.
-[private]
-env:
-    uv sync --locked --all-extras --all-groups
-
-# Canonical full gate - run before a PR or release.
+# Run all checks; must pass before a PR or release.
 [group('check')]
 check: pre-commit lint test audit build
 
-# Code checks: ruff, ruff format --check, mypy. Never modifies files.
+# Code checks: ruff, ruff format --check, mypy. Never modifies source files.
 [group('check')]
-lint: env
-    uv run --no-sync ruff check src tests
-    uv run --no-sync ruff format --check src tests
-    uv run --no-sync mypy src tests
+lint:
+    uv run ruff check src tests
+    uv run ruff format --check src tests
+    uv run mypy src tests
 
 # Apply every autofix: ruff lint fixes + formatting, then pre-commit hooks.
 [group('fix')]
-fix: env && pre-commit
-    uv run --no-sync ruff check --fix src tests
-    uv run --no-sync ruff format src tests
+fix: && pre-commit
+    uv run ruff check --fix src tests
+    uv run ruff format src tests
 
 # Run the test suite in parallel (pytest -n auto).
 [group('check')]
-test: env
-    uv run --no-sync pytest -n auto
+test:
+    uv run pytest -n auto
 
-# Vulnerability scan of the locked tree (pip-audit); waive an unfixed CVE with --ignore-vuln <ID>.
+# Vulnerability scan of the installed environment (pip-audit); waive an unfixed CVE with --ignore-vuln <ID>.
 [group('check')]
-audit: env
-    uv run --no-sync pip-audit
+audit:
+    uv run pip-audit
 
 # Run all pre-commit hooks against every file.
 [group('check')]
-pre-commit: env
-    uv run --no-sync pre-commit run --all-files
+pre-commit:
+    uv run pre-commit run --all-files
 
 # Rebuild the wheel into dist/ (wheel-only, --no-sources).
 [group('release')]
@@ -58,6 +53,8 @@ release-preflight:
         echo "error: working tree has uncommitted changes; commit them before publishing." >&2
         exit 1
     fi
+    # Plain `uv run` in check would silently re-lock a stale uv.lock and publish it uncommitted.
+    uv lock --check
     git fetch -q origin main
     # Exact tip, not just an ancestor: catches unpushed, stale, and feature-branch HEADs alike.
     if [[ "$(git rev-parse HEAD)" != "$(git rev-parse refs/remotes/origin/main)" ]]; then

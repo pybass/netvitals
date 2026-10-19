@@ -20,5 +20,5 @@ __pycache__
 # OS
 .DS_Store
 
-# Personal dev scratch (notes, configs, temp code snippets) — never committed
+# Personal dev scratch (notes, configs, temp code snippets)
 tmp/

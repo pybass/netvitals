@@ -1,12 +1,12 @@
 [project]
 name = "netvitals"
-version = "0.0.7"
+version = "0.0.8"
 description = "Internet connection monitor for macOS"
 readme = "README.md"
 authors = [{ name = "pybass" }]
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -14,13 +14,13 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "Operating System :: MacOS :: MacOS X",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: System :: Networking :: Monitoring",
 ]
 dependencies = [
-    "aiohttp==3.14.3",
-    "cyclopts==5.1.1",
-    "dnspython==2.8.0",
+    "aiohttp==3.14.5",
+    "cyclopts==5.2.0",
+    "dnspython==2.9.0",
     "psutil==7.2.2",
     "pyobjc-core==12.2.2 ; sys_platform == 'darwin'",
     "pyobjc-framework-cocoa==12.2.2 ; sys_platform == 'darwin'",
@@ -36,33 +36,28 @@ Issues = "https://github.com/pybass/netvitals/issues"
 netvitals = "netvitals.cli.main:main"
 
 [build-system]
-requires = ["uv_build>=0.12,<0.13"]  # pinned: build backends live outside uv.lock
+requires = ["uv_build>=0.13,<0.14"]  # pinned: build backends live outside uv.lock
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    # Linting & formatting
-    "ruff~=0.16.10",
-    # Type checking
+    "ruff~=0.17.1",
     "mypy~=2.4.0",
     "types-psutil~=7.2.2.20260906",
-    # Testing
     "pytest~=9.1.1",
     "pytest-xdist~=3.8.0",
-    # Vulnerability audit
     "pip-audit~=2.10.1",
-    # Git pre-commit hooks
-    "pre-commit~=4.6.2",
+    "pre-commit~=4.7.0",
 ]
 
 [tool.uv]
-required-version = ">=0.11"  # refuse a uv too old for the index/publish semantics we rely on
+required-version = ">=0.13"
 publish-url = "https://upload.pypi.org/legacy/"
 check-url = "https://pypi.org/simple/"  # lets a failed release re-run: uploaded files are skipped
 
 [tool.ruff]
 line-length = 130
-target-version = "py314"
+target-version = "py315"
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -77,6 +72,7 @@ ignore = [
     "RET503",   # explicit None returns are noisy
     "G004",     # f-strings in logging are fine
     "PT001", "PT006", "PT007", "PT023",  # cosmetic pytest-style rules
+    "D401",     # non-imperative-mood — fights noun-phrase docstrings (OpenAPI summaries) and fires inconsistently
     # Categories that fight our style
     "FIX",      # TODOs are fine
     "FBT",      # boolean-trap — too restrictive
@@ -88,13 +84,17 @@ ignore = [
     "PLR0911", "PLR0912", "PLR0913", "PLR0917", "PLR2004",  # soft pylint thresholds
     "TD002", "TD003",  # TODO author/link — optional
     "ASYNC109", # async-function-with-timeout — debatable
+    "D1",       # no docstring-coverage mandate — a docstring is written only where it adds contract
 ]
 
 [tool.ruff.lint.pep8-naming]
 classmethod-decorators = ["pydantic.field_validator"]  # N805: cls is correct without @classmethod
 
+[tool.ruff.lint.pydocstyle]
+ignore-decorators = ["typing.override", "typing.overload"]  # the base class / overload stub carries the contract
+
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["ANN", "S", "SLF"]  # tests skip annotation, assert/security, and private-access rules
+"tests/**/*.py" = ["ANN", "S", "SLF"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -102,13 +102,13 @@ indent-style = "space"
 docstring-code-format = true
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.15"
 strict = true
 warn_unreachable = true
 enable_error_code = ["redundant-expr", "possibly-undefined", "truthy-bool", "exhaustive-match", "unused-awaitable"]
 
 [[tool.mypy.overrides]]
-module = "tests.*"  # relaxed so pytest fixtures don't fight you
+module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
@@ -126,4 +126,4 @@ skip = "uv.lock,.git,.venv,.mypy_cache,.ruff_cache,.pytest_cache"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
 xfail_strict = true
-filterwarnings = ["error"]  # warnings are failures; targeted ignores go after "error"
+filterwarnings = ["error"]  # targeted ignores go after "error"
